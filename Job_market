@@ -1,0 +1,149 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud, STOPWORDS
+import re
+from collections import Counter
+import nltk
+from nltk.corpus import stopwords
+
+# Download NLTK stopwords if not already downloaded
+nltk.download('stopwords')
+
+# -----------------------------
+# 1. Load the Data
+# -----------------------------
+
+# Replace 'data_science_jobs.csv' with your actual file path
+df = pd.read_csv('data_science_jobs.csv')
+
+# Display the first few rows to verify
+print("First 5 entries in the dataset:")
+print(df.head())
+
+# -----------------------------
+# 2. Data Preprocessing
+# -----------------------------
+
+# Drop rows with missing job descriptions
+df = df.dropna(subset=['Description'])
+
+# Convert all descriptions to lowercase for uniformity
+df['Description'] = df['Description'].str.lower()
+
+# Optional: Remove HTML tags if present
+df['Description'] = df['Description'].str.replace(r'<.*?>', ' ', regex=True)
+
+# -----------------------------
+# 3. Define Skills and Qualifications
+# -----------------------------
+
+# Define a list of key skills and qualifications to search for
+skills = {
+    'programming_languages': ['python', 'r', 'sql', 'java', 'c\+\+', 'scala'],
+    'tools': ['tableau', 'power bi', 'spark', 'hadoop', 'tensorflow', 'keras'],
+    'databases': ['mysql', 'postgresql', 'mongodb', 'oracle', 'sql server'],
+    'machine_learning': ['machine learning', 'deep learning', 'nlp', 'computer vision'],
+    'degrees': ['bachelor', 'master', 'phd', 'doctorate'],
+    'soft_skills': ['communication', 'teamwork', 'problem-solving', 'critical thinking']
+}
+
+# Compile regex patterns for each category
+skill_patterns = {}
+for category, items in skills.items():
+    pattern = r'\b(' + '|'.join(items) + r')\b'
+    skill_patterns[category] = re.compile(pattern, re.IGNORECASE)
+
+# -----------------------------
+# 4. Extract Skills and Qualifications
+# -----------------------------
+
+# Initialize dictionaries to hold counts
+skill_counts = {category: [] for category in skills.keys()}
+
+# Function to extract and count skills
+def extract_skills(description):
+    extracted = {}
+    for category, pattern in skill_patterns.items():
+        matches = pattern.findall(description)
+        # To avoid counting duplicates in the same description, use set
+        extracted[category] = list(set([match.lower() for match in matches]))
+    return extracted
+
+# Apply the extraction to all job descriptions
+extracted_skills = df['Description'].apply(extract_skills)
+
+# Aggregate the counts
+for category in skills.keys():
+    all_skills = []
+    for entry in extracted_skills:
+        all_skills.extend(entry[category])
+    skill_counts[category] = Counter(all_skills)
+
+# -----------------------------
+# 5. Visualization
+# -----------------------------
+
+# Create a directory to save the plots
+import os
+if not os.path.exists('plots'):
+    os.makedirs('plots')
+
+# Function to plot top N skills for a category
+def plot_top_skills(counter, category, top_n=20):
+    top_skills = counter.most_common(top_n)
+    skills, counts = zip(*top_skills)
+
+    plt.figure(figsize=(10, 6))
+    plt.barh(skills[::-1], counts[::-1], color='skyblue')
+    plt.xlabel('Frequency')
+    plt.title(f'Top {top_n} {category.replace("_", " ").title()}')
+    plt.tight_layout()
+    plt.savefig(f'plots/top_{category}.png')
+    plt.show()
+
+# Plot for each category
+for category in skills.keys():
+    plot_top_skills(skill_counts[category], category)
+
+# -----------------------------
+# 6. Generate Word Clouds
+# -----------------------------
+
+# Combine all descriptions for word cloud
+combined_text = ' '.join(df['Description'].tolist())
+
+# Define stopwords
+custom_stopwords = set(STOPWORDS)
+custom_stopwords.update(stopwords.words('english'))
+
+# Generate WordCloud
+wordcloud = WordCloud(width=1600, height=800,
+                      background_color='white',
+                      stopwords=custom_stopwords,
+                      max_words=200,
+                      collocations=False).generate(combined_text)
+
+# Display the generated image
+plt.figure(figsize=(20, 10))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.title('Word Cloud of Data Science Job Descriptions', fontsize=20)
+plt.tight_layout(pad=0)
+plt.savefig('plots/wordcloud.png')
+plt.show()
+
+# -----------------------------
+# 7. Summary Report
+# -----------------------------
+
+# Function to display top N skills in a category
+def display_top_skills(counter, category, top_n=10):
+    print(f"\nTop {top_n} {category.replace('_', ' ').title()}:")
+    for skill, count in counter.most_common(top_n):
+        print(f"{skill.capitalize()}: {count}")
+
+# Display top skills for each category
+for category in skills.keys():
+    display_top_skills(skill_counts[category], category)
+
+print("\nEDA Complete. Plots saved in the 'plots' directory.")
